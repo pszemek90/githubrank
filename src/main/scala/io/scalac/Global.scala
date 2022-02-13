@@ -8,5 +8,5 @@ import scala.concurrent.duration._
 object Global {
 	implicit val system = ActorSystem()
 	implicit val materializer = ActorMaterializer()
-	implicit val timeout = Timeout(5 seconds)
+	implicit val timeout = Timeout(5 minutes)
 }
