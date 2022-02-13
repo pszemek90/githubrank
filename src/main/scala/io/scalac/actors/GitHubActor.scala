@@ -69,7 +69,7 @@ class GitHubActor extends Actor with JsonProtocol with ActorLogging {
 		)
 		
 		Source(serverRequests)
-			.mapAsync(10)(runRepoRequest)
+			.mapAsync(10)(runRequest[Repo])
 			.runWith(Sink.seq)
 			.map(_.flatten)
 			.pipeTo(self)
@@ -84,7 +84,7 @@ class GitHubActor extends Actor with JsonProtocol with ActorLogging {
 		).toList
 		
 		val contributors = Source(serverRequests)
-			.mapAsync(5)(runContributorRequest)
+			.mapAsync(5)(runRequest[Contributor])
 			.runWith(Sink.seq)
 		
 		contributors.map(_.flatten
@@ -96,25 +96,13 @@ class GitHubActor extends Actor with JsonProtocol with ActorLogging {
 		)
 	}
 	
-	def runContributorRequest(req: HttpRequest) = {
+	def runRequest[T](req: HttpRequest)(implicit reader: JsonReader[T]) = {
 		Http().singleRequest(req).flatMap(
 			_.entity
 				.dataBytes
 				.via(JsonFraming.objectScanner(Int.MaxValue))
 				.map(_.utf8String)
-				.map(_.parseJson.convertTo[Contributor])
-				.toMat(Sink.seq)(Keep.right)
-				.run()
-		)
-	}
-	
-	def runRepoRequest(req: HttpRequest) = {
-		Http().singleRequest(req).flatMap(
-			_.entity
-				.dataBytes
-				.via(JsonFraming.objectScanner(Int.MaxValue))
-				.map(_.utf8String)
-				.map(_.parseJson.convertTo[Repo])
+				.map(_.parseJson.convertTo[T])
 				.toMat(Sink.seq)(Keep.right)
 				.run()
 		)
