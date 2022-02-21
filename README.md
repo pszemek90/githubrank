@@ -1,7 +1,5 @@
 ## Scala githubRank challenge repository
 
-This repository contains code wrote for [Scalac](scalac.io) recruitment challenge.
-
 Usage:
 - Launch the app from Server.scala class
 - Go to http://localhost:8080/org/{org_name}/contributors (where org_name is name of organization you look for)
