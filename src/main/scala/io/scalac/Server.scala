@@ -19,7 +19,7 @@ object Server extends App with JsonProtocol with LazyLogging {
 	
 	val route =
 		(path("org" / Segment / "contributors") & get) { organization =>
-			complete((gitHubActor ? FetchContributors(organization)).mapTo[Future[Seq[Contributor]]])
+			complete((gitHubActor ? FetchContributors(organization)).mapTo[Seq[Contributor]])
 		}
 	
 	Http().bindAndHandle(route, "localhost", 8080)

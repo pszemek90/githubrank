@@ -1,103 +1,55 @@
 package io.scalac.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
-import akka.pattern.pipe
-import akka.stream.scaladsl.Source
-import akka.http.scaladsl.model.headers._
+import akka.http.scaladsl.model.HttpRequest
 import akka.stream.scaladsl.{JsonFraming, Keep, Sink}
-import com.typesafe.config.ConfigFactory
 import io.scalac.JsonProtocol
 import io.scalac.Model.{Contributor, Repo}
 import spray.json._
 
+import scala.language.postfixOps
+
 object GitHubActor {
 	case class FetchContributors(organization: String)
+	case class FetchRepoPages(organization: String)
+	case class RepoPagesFetched(numberOfPages: Int)
+	case class FetchRepos(organization: String, numberOfPages: Int)
+	case class ReposFetched(repos: Seq[Repo])
+	case class FetchContributorsForRepo(repo: Repo, organization: String)
+	case class ContributorsFetched(contributors: Seq[Contributor])
 }
 
 class GitHubActor extends Actor with JsonProtocol with ActorLogging {
 	
 	import GitHubActor._
 	import io.scalac.Global._
-	import system.dispatcher
+	
+	var requestSent = 0
 	
 	override def receive: Receive = {
 		case FetchContributors(organization) =>
-			checkNumberOfPages(organization)
+			val pagesFetcherActor = context.actorOf(Props[RepoPagesFetcherActor], "pagesFetcherActor")
+			pagesFetcherActor ! FetchRepoPages(organization)
 			context.become(collectInfoForOrganization(organization, sender()))
 	}
 	
 	def collectInfoForOrganization(organization: String, originalSender: ActorRef): Receive = {
-		case pagesNumber: Int =>
-			log.info(s"Number of pages to go through: $pagesNumber")
-			fetchRepos(organization, pagesNumber)
-		case repos: Seq[Repo] =>
-			log.info(s"Fetched repositories: $repos")
-			originalSender ! findContributorsForRepos(organization, repos)
+		case RepoPagesFetched(numberOfPages) =>
+			log.info(s"Number of pages to go through: $numberOfPages")
+			val repoFetcherActor = context.actorOf(Props[RepoFetcherActor], "repoFetcherActor")
+			repoFetcherActor ! FetchRepos(organization, numberOfPages)
+		case ContributorsFetched(contributors) =>
+			originalSender ! contributors
 			context.unbecome()
-	}
-	
-	val authorizationName = "Authorization"
-	val config = ConfigFactory.load()
-	val envToken = config.getString("github.token")
-	
-	def checkNumberOfPages(organization: String) = {
-		val responseFuture = Http().singleRequest(HttpRequest(uri = s"https://api.github.com/orgs/$organization/repos",
-			headers = List(RawHeader(authorizationName, envToken))))
-		
-		responseFuture.map {
-			case HttpResponse(StatusCodes.OK, headers, entity, _) =>
-				val linkHeader = headers.collect {
-					case Link(x) => x
-				}
-				entity.discardBytes()
-				linkHeader.flatten
-					.filter(_.params.contains(LinkParams.last))
-					.map(_.uri)
-					.map(_.query().value)
-					.toList.headOption.getOrElse("1").toInt
-		}.pipeTo(self)
-	}
-	
-	def fetchRepos(organization: String, pagesAmount: Int) = {
-		val serverRequests = for {
-			i <- 1 until pagesAmount + 1
-		} yield HttpRequest(
-			uri = s"https://api.github.com/orgs/$organization/repos?page=$i",
-			headers = List(RawHeader(authorizationName, envToken))
-		)
-		
-		Source(serverRequests)
-			.mapAsync(10)(runRequest[Repo])
-			.runWith(Sink.seq)
-			.map(_.flatten)
-			.pipeTo(self)
-	}
-	
-	def findContributorsForRepos(organization: String, repos: Seq[Repo]) = {
-		val serverRequests = repos.map(repo =>
-			HttpRequest(
-				uri = s"https://api.github.com/repos/$organization/${repo.name}/contributors",
-				headers = List(RawHeader(authorizationName, envToken))
-			)
-		).toList
-		
-		val contributors = Source(serverRequests)
-			.mapAsync(5)(runRequest[Contributor])
-			.runWith(Sink.seq)
-		
-		contributors.map(_.flatten
-			.groupBy(_.login)
-			.map(k => k._1 -> k._2.map(_.contributions))
-			.map(k => k._1 -> k._2.sum)
-			.flatMap(k => List(Contributor(k._1, k._2)))
-			.toSeq.sortBy(_.contributions).reverse
-		)
+		case message => log.info(s"Type of message received: $message")
 	}
 	
 	def runRequest[T](req: HttpRequest)(implicit reader: JsonReader[T]) = {
-		Http().singleRequest(req).flatMap(
+		requestSent += 1
+		log.info(s"Fetching request no $requestSent: ${req.uri}")
+		val eventualResponse = Http().singleRequest(req)
+		eventualResponse.flatMap(
 			_.entity
 				.dataBytes
 				.via(JsonFraming.objectScanner(Int.MaxValue))

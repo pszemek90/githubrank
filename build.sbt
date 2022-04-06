@@ -2,21 +2,25 @@ name := "githubrank"
 
 version := "0.1"
 
-scalaVersion := "2.12.8"
+scalaVersion := "2.13.8"
 
-val akkaVersion = "2.5.20"
-val akkaHttpVersion = "10.1.7"
-val scalaTestVersion = "3.0.5"
+val AkkaVersion = "2.6.18"
+val AkkaHttpVersion = "10.2.8"
+val scalaTestVersion = "3.2.9"
 
 libraryDependencies ++= Seq(
+    // akka actor
+    "com.typesafe.akka" %% "akka-actor-typed" % AkkaVersion,
+    "com.typesafe.akka" %% "akka-actor-testkit-typed" % AkkaVersion % Test,
     // akka streams
-    "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+    "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
+    "com.typesafe.akka" %% "akka-stream-testkit" % AkkaVersion % Test,
     // akka http
-    "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
-    "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
-    "com.typesafe.akka" %% "akka-http-testkit" % akkaHttpVersion,
+    "com.typesafe.akka" %% "akka-http" % AkkaHttpVersion,
+    "com.typesafe.akka" %% "akka-http-spray-json" % AkkaHttpVersion,
+    "com.typesafe.akka" %% "akka-http-testkit" % AkkaHttpVersion,
     // testing
-    "com.typesafe.akka" %% "akka-testkit" % akkaVersion,
+    "com.typesafe.akka" %% "akka-testkit" % AkkaVersion,
     "org.scalatest" %% "scalatest" % scalaTestVersion,
     // logging
     "ch.qos.logback" % "logback-classic" % "1.2.10",
